@@ -101,7 +101,7 @@ namespace sfr {
 
         union tor_t {                               // Time out Register (UA_TOR)
             __SFR(tor_t, uint32_t, 0)
-            sfb_t<tor_t, 0, 7> TOIC;
+            sfb_t<tor_t, 0, 8> TOIC;
             sfb_t<tor_t, 8, 8> DLY;
         };
 
@@ -129,6 +129,7 @@ namespace sfr {
             sfb_t<alt_csr_t, 9, 1> RS485_AAD;
             sfb_t<alt_csr_t, 10, 1> RS485_AUD;
             sfb_t<alt_csr_t, 15, 1> RS485_ADD_EN;
+            sfb_t<alt_csr_t, 24, 8> ADDR_MATCH;
         };
 
         union funsel_t {                            // UART Function Select Register (UA_FUN_SEL)
