@@ -60,6 +60,7 @@ public class SVDDevice {
             }
 		} catch (Exception e) {
 			log(e.toString());
+			return false;
 		}
 		
 		return true;
@@ -95,24 +96,39 @@ public class SVDDevice {
 		return null;
 	}
 	
-	public Group getGroup(String name){
+	public Group findGroup(String name){
 		Iterator<Group> it = mGroups.iterator();
 		while(it.hasNext()){
 			Group gp = it.next();
-			if(gp.name.compareTo(name) == 0){
+			if(gp.mName.compareTo(name) == 0){
 				return gp;
 			}
 		}
-		mGroups.add(new Group(name));
+		return null;
+	}
+	
+	public Group getGroup(String name){
+		Group gp = findGroup(name);
+		if(gp != null) return gp;
+		mGroups.add(new Group(name,this));
 		return getGroup(name);
 	}
 	
 	public class Group{
-		public String name;
-		public Group(String name){
-			this.name = name;
+		public String mName;
+		public String mPostfix = "";
+		public Group(String name, SVDDevice parent){
+			this.mName = name;
+			mParent = parent;
+		}
+		public String gpName(){
+			return mName + mPostfix;
 		}
 		private List<Peripheral> mPeripherals = new ArrayList<Peripheral>();
+		private SVDDevice mParent;
+		public SVDDevice parent(){
+			return mParent;
+		}
 		
 		public void addPeripheral(Peripheral p){
 			mPeripherals.add(p);
@@ -173,6 +189,16 @@ public class SVDDevice {
 		}
 	}
 	
+	private List<Interrupt> mExtIRQs = null;
+	public void setIRQs(List<Interrupt> irqs){
+		mExtIRQs = irqs;
+	}
+	
+	private List<Peripheral> mExtPers = null;
+	public void setPeripherals(List<Peripheral> pers){
+		mExtPers = pers;
+	}
+	
 	public List<Interrupt> getIRQs(){
 		Iterator<Group> it = mGroups.iterator();
 		List<Interrupt> r = new ArrayList<Interrupt>();
@@ -198,10 +224,12 @@ public class SVDDevice {
 		public String groupName = "def_group";
 		public List<Register> registers = new ArrayList<Register>();
 		public List<Interrupt> interrupts = new ArrayList<Interrupt>();
-		
 		public Peripheral(){}
 
 		String derivedFrom = "";
+		public Group parent() {
+			return mParent;
+		}
 		
 		public void parse(Element element){
 			String derived = get_attr(element, "derivedFrom");
@@ -224,7 +252,9 @@ public class SVDDevice {
 			if(v.length()>0) baseAddress = v;
 			v = get_tag(element, "groupName", "");
 			if(v.length()>0) groupName = v;
-			getGroup(groupName).addPeripheral(this);
+			Group gp = getGroup(groupName);
+			mParent = gp;
+			gp.addPeripheral(this);
 			
 			NodeList nodes = get_tag(element,"register");
 			if(nodes.getLength()>0){
@@ -260,8 +290,8 @@ public class SVDDevice {
 		public int compareBaseAddress(Peripheral other){
 			long v1 = 0;
 			long v2 = 0;
-			v1 = parseInt(baseAddress, 16);
-			v2 = parseInt(other.baseAddress, 16);
+			v1 = parseLong(baseAddress, 16);
+			v2 = parseLong(other.baseAddress, 16);
 			if(v1 > v2){
 				return 1;
 			}else if(v1<v2){
@@ -274,8 +304,8 @@ public class SVDDevice {
 			long v1 = 0;
 			long v2 = 0;
 			
-			v1 = interrupts.size()>0 ? parseInt(interrupts.get(0).value):0xfffff;
-			v1 = other.interrupts.size()>0 ? parseInt(other.interrupts.get(0).value):0xfffff;
+			v1 = interrupts.size()>0 ? parseLong(interrupts.get(0).value):0xfffff;
+			v1 = other.interrupts.size()>0 ? parseLong(other.interrupts.get(0).value):0xfffff;
 			if(v1 > v2){
 				return 1;
 			}else if(v1<v2){
@@ -295,6 +325,9 @@ public class SVDDevice {
 			Map<String, Object> r1 = new HashMap<String, Object>();
 			Map<String, Object> r2 = new HashMap<String, Object>();
 			Iterator<Register> it = registers.iterator();
+			
+			Map<Register, Object> x = new java.util.TreeMap<Register, Object>();
+			x.put(new Register(), 1);
 			while(it.hasNext()){
 				String s = it.next().name;
 				l1.put(s, s);
@@ -381,9 +414,11 @@ public class SVDDevice {
 		}
 		@Override
 		public int compareTo(Interrupt arg0) {
-			int v1 = valid ? parseInt(value) : 0xffff;
-			int v2 = arg0.valid ? parseInt(arg0.value) : 0xffff;
-			return v1 - v2;
+			long v1 = valid ? parseLong(value) : 0xffff;
+			long v2 = arg0.valid ? parseLong(arg0.value) : 0xffff;
+			if(v1<v2)return -1;
+			if(v1>v2)return 1;
+			return 0;
 		}
 	}
 	
@@ -420,9 +455,9 @@ public class SVDDevice {
 
 		@Override
 		public int compareTo(Register o) {
-			int v1 = parseInt(addressOffset);
-			int v2 = parseInt(o.addressOffset);
-			return v1 - v2;
+			long v1 = parseLong(addressOffset);
+			long v2 = parseLong(o.addressOffset);
+			return compare(v1,v2);
 		}
 	}
 	
@@ -440,7 +475,7 @@ public class SVDDevice {
 		}
 		@Override
 		public int compareTo(Field arg0) {
-			return parseInt(bitOffset) - parseInt(arg0.bitOffset);
+			return compare(parseLong(bitOffset) , parseLong(arg0.bitOffset));
 		}
 	}
 	
@@ -471,20 +506,29 @@ public class SVDDevice {
 		return element.getElementsByTagName(tag);
 	}
 	
-	public static int parseInt(String num){
-		return parseInt(num,10);
+	public static long parseLong(String num){
+		return parseLong(num,10);
 	}
-	public static int parseInt(String num, int radix){
+	
+	public static int compare(long x, long y){
+		if(x<y)return -1;
+		if(x>y)return 1;
+		return 0;
+	}
+	
+	public static long parseLong(String num, int radix){
+		if(num == null) return 0;
 		if(num.startsWith("0x")){
 			radix = 16;
 			num = num.substring(2);
 		}
 		
-		int r = 0;
+		long r = 0;
 		try{
-			r = Integer.parseInt(num, radix);
+			r =  Long.parseLong(num, radix);
 		}catch(NumberFormatException e){
-			e.printStackTrace();
+			//e.printStackTrace();
+			log(num+"  " + radix);
 		}
 		//log(num + String.format("   %08x  ", r));
 		return r;
@@ -498,14 +542,14 @@ public class SVDDevice {
 		if(!groupPerFile){
 			writefile("");
 			writefile("/* ================================================================================ */");
-			writefile(moveTo("/* =====================       "+ gp.name, 54) + "  =========================== */");
+			writefile(moveTo("/* =====================       "+ gp.gpName(), 54) + "  =========================== */");
 			writefile("/* ================================================================================ */");
 			writefile("");
 		}
-		writefile(comment(TAB + "namespace " +  gp.name.toLowerCase() + "{", gp.getMaxPeripheral().description));
+		writefile(comment(TAB + "namespace " +  gp.gpName().toLowerCase() + "{", gp.getMaxPeripheral().description));
 	}
 	void output_tail(Group gp, boolean groupPerFile){
-		writefile(TAB + "}//namespace " +  gp.name.toLowerCase() + "");
+		writefile(TAB + "}//namespace " +  gp.gpName().toLowerCase() + "");
 	}
 	
 	String moveTo(String str, int col){
@@ -537,7 +581,7 @@ public class SVDDevice {
 	}
 	
 	static String sizeType(String size){
-		int s = parseInt(size);
+		int s = (int)parseLong(size);
 		if( s == 32){
 			return "uint32_t";
 		}else if(s == 16){
@@ -604,7 +648,7 @@ public class SVDDevice {
 		int index = 0;
 		while(it.hasNext()){
 			Register reg = it.next();
-			int reg_pos = parseInt(reg.addressOffset);
+			int reg_pos = (int)parseLong(reg.addressOffset);
 			while(pos < reg_pos){
 				if(reg_pos>pos+4){
 					int len = reg_pos - pos;
@@ -625,7 +669,7 @@ public class SVDDevice {
 				index++;
 			}
 			output(reg, false);
-			pos +=  parseInt(reg.size)/8;
+			pos +=  (int)parseLong(reg.size)/8;
 		}
 		writefile(ident + "}; //strict " + typeName.toLowerCase() + "_t");
 		writefile("");
@@ -634,6 +678,7 @@ public class SVDDevice {
 	void output_irqs(Group gp){
 		String ident = gp != null ? TAB+TAB : TAB;
 		List<Interrupt> c = gp != null ? gp.getIRQs() : getIRQs();
+		if(mExtIRQs != null) c = mExtIRQs;
 		Iterator<Interrupt> it = c.iterator();
 		boolean irq = false;
 		while(it.hasNext()){
@@ -669,6 +714,7 @@ public class SVDDevice {
 		}
 		
 		List<Peripheral> c1 = gp.getPeripheralSortByBase();
+		if(mExtPers != null) c1 = mExtPers;
 		Iterator<Peripheral> i1 = c1.iterator();
 		writefile(ident + "enum {");
 		while(i1.hasNext()){
@@ -734,19 +780,28 @@ public class SVDDevice {
 		}
 	}
 	
-	void output(String group){
+	void output(String group, String postfix){
+		output(group, postfix, null);
+	}
+	
+	private String mExtInfo = null;
+	
+	void output(String group, String postfix, String extInfo){
 		boolean find = false;
+		mExtInfo = extInfo;
 		Iterator<Group> it = mGroups.iterator();
 		while(it.hasNext()){
 			Group gp = it.next();
-			if(gp.name.compareTo(group)==0){
+			if(gp.mName.compareTo(group)==0){
+				gp.mPostfix = postfix;
 				output(gp, true);
+				gp.mPostfix = "";
 				find = true;
 				break;
 			}
 		}
 		if(find){
-			log("Create SFR file for " + group );
+			if(extInfo == null)log("Create SFR file for " + group );
 		}else{
 			log("Peripheral [" + group + "] not exsit");
 		}
@@ -785,7 +840,7 @@ public class SVDDevice {
 	boolean nohpp = false;
 	
 	void output_file_begin(Group gp){
-		String fileName = gp != null ? gp.name : name;
+		String fileName = gp != null ? gp.gpName() : name;
 		fileName = filePrefix + (uppercase?fileName.toUpperCase():fileName.toLowerCase()) + (nohpp ? "":".hpp");
 		try {
 			fileWriter = new BufferedWriter(new FileWriter(fileName));
@@ -793,9 +848,10 @@ public class SVDDevice {
 			log(e.toString());
 		}
 		writeauthor();
+		if(mExtInfo!=null)writefile(mExtInfo); 
 		if(gp != null){	
-			writefile("#ifndef __SFR_" + gp.name.toUpperCase() + "_HPP");
-			writefile("#define __SFR_" + gp.name.toUpperCase() + "_HPP");
+			writefile("#ifndef __SFR_" + gp.gpName().toUpperCase() + "_HPP");
+			writefile("#define __SFR_" + gp.gpName().toUpperCase() + "_HPP");
 			writefile("");
 			writefile("#include <sfr/sfr.hpp>");
 			writefile("");

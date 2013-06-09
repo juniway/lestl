@@ -43,6 +43,22 @@ public class SVD_lestl {
 			}
 		}
 		
+		String[] files = filename.split(",");
+		
+		if(files.length>1){
+			SVDMerge merge = new SVDMerge();
+			for(int i=0;i<files.length;i++){
+				SVDDevice dev = new SVDDevice(files[i]);
+				if(dev.load()){
+					dev.uppercase = upper;
+					dev.nohpp = nohpp;
+					merge.addDevice(dev);
+				}
+			}
+			merge.ouput();
+			return;
+		}
+		
 		SVDDevice dev = new SVDDevice(filename);
 		if(!dev.load()) return;
 		dev.uppercase = upper;
@@ -50,7 +66,7 @@ public class SVD_lestl {
 		if(peripherals.size()>0){
 			Iterator<String> it = peripherals.iterator();
 			while(it.hasNext()){
-				dev.output(it.next());
+				dev.output(it.next(),"");
 			}
 		}else{
 			dev.output(!onefile);
@@ -62,7 +78,7 @@ public class SVD_lestl {
 	}
 	public static void usage(){
 		// 80 cols marker:  01234567890123456789012345678901234567890123456789012345678901234567890123456789
-        System.out.println("Usage: SVD_lestl INPUTFILE [-u | -s | -n | -p Peripheral]");
+        System.out.println("Usage: SVD_lestl INPUTFILE[,FILE[,FILE...]] [-u | -s | -n | -p Peripheral]");
         System.out.println("     -u       Output file name in upper case");
         System.out.println("     -s       Output all peripheral SFR in one file");
         System.out.println("     -n       No .hpp postfix for SFR file");
