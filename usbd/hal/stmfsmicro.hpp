@@ -145,33 +145,11 @@ namespace usbd {
 				__INLINE ep_impl_t() { }
 				__INLINE void config(uint_fast8_t type, uint_fast8_t num, bool dir)
 				{
-                    ///xy using namespace sfr::usbd;
-                    ///xy sfr::sfr_t<sfr::usbd::cfg_t> cfg;
-//					cfg(0).EP_NUM(num, false).ISOCH(type == 1, false).STATE(dir + 1, false).CSTALL(1);
-                    ///xy cfg(0).EP_NUM(num, false).ISOCH(type == 1, false).STATE(dir + 1, false);
-                    ///xy config(num, cfg);
-                    ///xy 根据type,num,dir设置ep的类型
-                    ///xy Nuc120中使用的是 USB_CFGx来设置ep的类型和方向 (NUC100s_TRM 5.4.6)
-                    ///xy 而STM32中使用的是 USB_EPnR来设置ep的类型和方向 (STM32_RM0008 23.5.2)
-                    ///xy valid types in STM32 are EP_BULK, EP_CONTROL, EP_ISOCHRONOUS, EP_INTERRUPT
-                    //dbg()<<"Config ep"<<num<<" dir:"<<dir<<" type:"<<type<<endl;
                     (&USB_FS.USB_EP0R)[num]().EP_TYPE(type).CTR_RX(1).CTR_TX(1);
-                    //if(num == 0){
-                    //    dbg()<<"Set ep as control"<<endl;
-                    //    USB_FS.USB_EP0R().EP_TYPE.(CONTROL).CTR_RX(1).CTR_TX(1);
-                    //    //_SetEPType(num, EP_CONTROL);
-                    //}else{
-                    //    dbg()<<"Set ep as int"<<endl;
-                    //    
-                        //_SetEPType(num, EP_INTERRUPT);
-                    //}
                     this->dir = dir;
                     if(dir){
-                        ///xy dir = 1, M0中STATE为2，表示IN
-                        _SetEPTxStatus(num, EP_TX_STALL);
                         _SetEPTxStatus(num, EP_TX_STALL);
                     }else{
-                        ///xy dir = 0, M0中STATE为1，表示OUT
                         _SetEPRxStatus(num, EP_RX_VALID);
                         _SetEPRxCount(num, _ep_pktsz);
                     }
@@ -183,53 +161,30 @@ namespace usbd {
 				}
                 __WEAK void config(uint_fast8_t num, uint_fast32_t cfg)
 				{
-                    ///xy using namespace sfr::usbd;
                     ///xy 通过ep num得到相关ep寄存，由于STM32可以由在同一个ep上配置成in和out
                     ///xy 这里可能需要换一种计算偏移的方式
-                    ///xy decltype(reg) p = &USBD.EP[num];
-                    ///xy CFG已经写入
-                    ///xy p->CFG(cfg);
                     decltype(reg) p = num;
                     reg = p;
                     uint32_t addr_offset;
-                    
-                    //dbg()<<"Config ep"<<num<<endl;
-                    ///xy 根据num和in还是out得到ep的buffer地址
-                    ///xy STM32的BTABLE除了存放数据
-                    ///xy 还要存放ADDRn_TX, COUNTn_TX, ADDRn_RX, COUNTn_RX
-                    ///xy addr需要从这些信息之后开始计算
-                    ///xy addr = &USBD.SRAM32[num * 16];
+
                     if(dir){
                         ///xy IN端点，获取tx buffer的位置
                         addr_offset = num*2*_ep_pktsz + GET_TOTOAL_EP_COUNT()*8;
                         _SetEPTxAddr(num, addr_offset);
-                        //dbg()<<"Set ep"<<num<<" tx addr:"<<addr_offset<<endl;
-                        /// static_assert(addr_offset*1 == 0)
                     }else{
                         ///xy OUT端点，获取rx buffer的位置
                         addr_offset = (num*2 + 1)*_ep_pktsz + GET_TOTOAL_EP_COUNT()*8;
                         _SetEPRxAddr(num, addr_offset);
-                        //dbg()<<"Set ep"<<num<<" rx addr:"<<addr_offset<<endl;
-                        /// static_assert(addr_offset*1 == 0)
                     }
                     ///xy 得到 addr的物理地址
                     if(dir){
                         addr_in = (uint32_t*)(PMAAddr + addr_offset*2);
-                        //dbg()<<"addr_in: "<<HEX(addr_in)<<endl;
                     }else{
                         addr_out = (uint32_t*)(PMAAddr + addr_offset*2);
-                        //dbg()<<"addr_out: "<<HEX(addr_out)<<endl;
                     }
-                    ///xy 设置buffer对应的
-                    ///xy p->BUFSEG(num * _ep_pktsz);
-
-                    ///xy p->CFGP(0).CLRRDY(1);
 				}
 				__WEAK void set_stall()
 				{
-                    //using namespace sfr::usbd;
-                    //reg->CFGP(0).CLRRDY(1).SSTALL(1);
-                    //dbg()<<"set_stall:"<<reg<<" dir:"<<dir<<endl;
                     if(dir){
                         _SetEPRxStatus(reg, EP_TX_STALL);
                     }else{
@@ -238,10 +193,6 @@ namespace usbd {
 				}
 				__WEAK void clear_stall()
 				{
-                    //using namespace sfr::usbd;
-                    //reg->CFGP(0).CLRRDY(1);
-                    //reg->CFG().DSQ_SYNC(0);
-                    //dbg()<<"clear_stall:"<<reg<<" dir:"<<dir<<endl;
                     if(dir){
                         _SetEPRxStatus(reg, EP_TX_NAK);
                     }else{
@@ -255,7 +206,6 @@ namespace usbd {
 					bool r = false;
 					uint_fast16_t len = max_length;
                     
-                    //dbg()<<"in:"<<reg<<" dir:"<<dir<<" len:"<<length<<" max len:"<<max_length<<endl;
 					if (length < max_length) {
 						len = length;
 						if (length % _ep_pktsz == 0)
@@ -279,11 +229,7 @@ namespace usbd {
 							buf = inbuf;
 							inbuf += len;
 							length = len;
-                            //volatile uint16_t* dst = (volatile uint16_t*)addr;
-                            //volatile uint16_t* dst = (uint16_t*)(PMAAddr + (uint8_t *)(_GetEPTxAddr(reg) * 2));
                             volatile uint16_t* dst = (volatile uint16_t*)(addr_in);
-                            //dbg()<<"dst: "<<HEX(dst)<<endl;
-                            //dbg()<<"addr: "<<HEX(ddt)<<endl;
                             auto* src = reinterpret_cast<const uint16_t*>(buf);
 							do {
 								*dst++ = *src++;
@@ -292,8 +238,6 @@ namespace usbd {
                             } while ((length -= sizeof(uint16_t)) > 0);
 						}
 
-                        ///xy reg->MXPLD(0).MXPLD(len, false);
-                        //dbg()<<"ep"<<reg<<" tx len = "<<len<<endl;
                         _SetEPTxCount( reg, len);
                         _SetEPTxStatus(reg, EP_TX_VALID);
 						return false;
@@ -302,21 +246,17 @@ namespace usbd {
 				}
 				__WEAK void out(void* buffer, uint_fast16_t length)
 				{
-                    //dbg()<<"out:"<<reg<<" dir:"<<dir<<" length:"<<length<<endl;
 					outbuf = reinterpret_cast<uint8_t*>(buffer);
 					count = length;
 					num = 0;
 					if (length > _ep_pktsz)
 						length = _ep_pktsz;
-
-                    ///xy reg->MXPLD(0).MXPLD(length, false);
                     _SetEPRxCount( reg, length);
 				}
 				__WEAK uint_fast16_t out()
 				{
 					uint_fast16_t len = count;
-                    uint_fast8_t n = _GetEPRxCount(reg);///xy reg->MXPLD;
-                    //dbg()<<"out"<<endl;
+                    uint_fast8_t n = _GetEPRxCount(reg);
 					if (len > n)
 						len = n;
                     auto dst = reinterpret_cast<volatile uint16_t*>(outbuf);
@@ -345,7 +285,6 @@ namespace usbd {
 						outbuf += _ep_pktsz;
 						if (n > _ep_pktsz)
 							n = _ep_pktsz;
-                        //reg->MXPLD(0).MXPLD(n, false);
                         _SetEPRxCount( reg, n);
 						r = 0;
 					}
@@ -363,12 +302,10 @@ namespace usbd {
 					uint16_t num;
 				};
 
-                ///xy 这里使用offset来表示eg reg的位置，使用时需要加上EP0REG的偏移
-                ///xy decltype(&sfr::usbd::USBD.EP[0]) reg;
                 uint32_t reg;
                 bool  dir;
-				volatile uint32_t* addr_in;
-                volatile uint32_t* addr_out;
+				volatile uint32_t* addr_in;   // address for in endpoint
+                volatile uint32_t* addr_out;  // address for out endpoint
 			};
 		}
 		namespace transfer {
@@ -378,17 +315,10 @@ namespace usbd {
 					__INLINE ep_impl_t() { }
 					__WEAK void out(void* buffer, uint_fast16_t length)
 					{
-//						reg->CFG().STATE(length != 0 ? EP_OUT : EP_IN, false).DSQ_SYNC(1).CSTALL(1);
-                        ///xy reg->CFG().STATE(length != 0 ? EP_OUT : EP_IN, false).DSQ_SYNC(1);
-                        //dbg()<<"control out:"<<reg<<" dir:"<<dir<<" length:"<<length<<endl;
                         if(length != 0){
                             _SetEPRxStatus(reg, EP_RX_VALID);
                             transaction::ep_impl_t::out(buffer, length);
-                            //_ClearDTOG_RX(reg);
                         }else{
-                            ///后面的out会TX数据
-                            //_SetEPRxStatus(reg, EP_TX_VALID);
-                            //_ClearDTOG_TX(reg);
                             transaction::ep_impl_t::in(buffer, length, _ep_pktsz);
                         }
 						
@@ -396,11 +326,7 @@ namespace usbd {
 					__WEAK uint_fast16_t out()
 					{
 						uint_fast16_t n = transaction::ep_impl_t::out();
-                        //dbg()<<"control out"<<endl;
 						if (n != 0) {
-//							reg->CFG().STATE(EP_IN).DSQ_SYNC(1).CSTALL(1);
-                            ///xy reg->CFG().STATE(EP_IN).DSQ_SYNC(1);
-                            ///xy reg->MXPLD(0).MXPLD(0);
                             _ClearDTOG_TX(reg);
                             _SetEPTxStatus(reg, EP_TX_STALL);
                             _SetEPTxCount(reg, 0);
@@ -409,22 +335,13 @@ namespace usbd {
 					}
 					__WEAK bool in(const void* buffer, uint_fast16_t length, uint_fast16_t max_length)
 					{
-//						reg->CFG().STATE(EP_IN).DSQ_SYNC(1).CSTALL(1);
-                        ///xy reg->CFG().STATE(EP_IN).DSQ_SYNC(1);
-                        //dbg()<<"control in:"<<reg<<" dir:"<<dir<<" len:"<<length<<" max_len:"<<max_length<<endl;
-                        //_ClearDTOG_RX(reg);
 						return transaction::ep_impl_t::in(buffer, length, max_length);
 					}
 					__WEAK bool in()
 					{
 						bool r = transaction::ep_impl_t::in();
-                        //dbg()<<"control in "<<r<<endl;
 						if (r) {
-//							reg->CFG().STATE(EP_OUT).DSQ_SYNC(1);
-                            ///xy reg->CFG().STATE(EP_OUT).DSQ_SYNC(1).CSTALL(1);
-                            ///xy reg->MXPLD(0).MXPLD(0);
                             _SetEPRxStatus(reg, EP_TX_STALL);
-                            //_ClearDTOG_TX(reg);
                             _SetEPTxCount(reg, 0);
 						}
 						return r;
@@ -449,16 +366,6 @@ namespace usbd {
 		public:
 			__INLINE void enable_irq()
 			{
-                ///xy using namespace sfr::usbd;
-                ///xy USBD.INTEN(0).BUS_IE(1).USB_IE(1).FLDET_IE(1).WAKEUP_IE(1).WAKEUP_EN(1);
-                ///
-                //NVIC_InitTypeDef NVIC_InitStructure;
-                //NVIC_InitStructure.NVIC_IRQChannel = USB_LP_CAN1_RX0_IRQn;
-                //NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 2;
-                //NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
-                //NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
-                //NVIC_Init(&NVIC_InitStructure);
-                //dbg()<<"enable_irq"<<endl;
                 uint32_t tmppriority = 0x00, tmppre = 0x00, tmpsub = 0x0F;
                 tmppriority = (0x700 - ((SCB->AIRCR) & (uint32_t)0x700))>> 0x08;
                 tmppre = (0x4 - tmppriority);
@@ -473,39 +380,18 @@ namespace usbd {
                 /* Enable the Selected IRQ Channels --------------------------------------*/
                 NVIC->ISER[USB_LP_CAN_RX0_IRQn >> 0x05] =
                 (uint32_t)0x01 << (USB_LP_CAN_RX0_IRQn & (uint8_t)0x1F);
-                
-                /// enable USB interrupts
                 _SetCNTR(IMR_MSK);
 			}
 
 			__INLINE void disable_irq()
 			{
-                //dbg()<<"disable_irq"<<endl;
-                ///xy using namespace sfr::usbd;
-                ///xy USBD.INTEN(0);
-                //NVIC_InitTypeDef NVIC_InitStructure;
-                //NVIC_InitStructure.NVIC_IRQChannel = USB_LP_CAN1_RX0_IRQn;
-                //NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 2;
-                //NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
-                //NVIC_InitStructure.NVIC_IRQChannelCmd = DISABLE;
-                //NVIC_Init(&NVIC_InitStructure);
-                
-                //uint32_t tmppriority = 0x00, tmppre = 0x00, tmpsub = 0x0F;
                 NVIC->ICER[USB_LP_CAN_RX0_IRQn >> 0x05] =
                 (uint32_t)0x01 << (USB_LP_CAN_RX0_IRQn & (uint8_t)0x1F);
-                //sfr::gpio::GPIOA;
-                //(&NVIC.ICER0)[USB_LP_CAN_RX0_IRQn >> 0x05] = 1<< (USB_LP_CAN_RX0_IRQn & (uint8_t)0x1F);
-                
-                /// disable all USB interrupts
                 _SetCNTR(0);
 			}
 
 			__INLINE void open(bool intr)
 			{
-				///xy using namespace sfr::usbd;
-                //dbg()<<"open "<<intr<<endl;
-                // We need config the GPIO for the STM32F3xx
-                //setup_io_usb();
                 RCC.AHBENR().IOPAEN(1);
                 GPIOA.MODER().MODER11(GPIO_Mode_AF).MODER12(GPIO_Mode_AF);
                 GPIOA.OTYPER().OT11(GPIO_OType_PP).OT12(GPIO_OType_PP);
@@ -517,52 +403,29 @@ namespace usbd {
 					///xy *reinterpret_cast<volatile uint32_t*>(0xe000e100) = 1 << USBD_IRQn;
 					enable_irq();
 				}
-                ///xy BD.ATTR(0x40).PHY_EN(1).USB_EN(1).DPPU_EN(1).PWRDN(1).BYTEM(0);			// Enable USB and enable PHY
-                ///xy USBD.DRVSE0(0).DRVSE0(0);
-//#define RCC_OFFSET                (RCC_BASE - PERIPH_BASE)
-//#define USBPRE_BitNumber          0x16
-//#define CFGR_OFFSET               (RCC_OFFSET + 0x04)
-//#define CFGR_USBPRE_BB            (PERIPH_BB_BASE + (CFGR_OFFSET * 32) + (USBPRE_BitNumber * 4))
                 if(GET_SYS_CLOCK() == 72000000){
-                    //dbg()<<"SYS 72MHz"<<endl;
-                    RCC.CFGR().USBPRES(0);
-                    //*(__IO uint32_t *) CFGR_USBPRE_BB = RCC_USBCLKSource_PLLCLK_1Div5;
+                    RCC.CFGR().USBPRES(0);  // 1div5
                 }else if(GET_SYS_CLOCK() == 48000000){
-                    //dbg()<<"SYS 48MHz"<<endl;
-                    RCC.CFGR().USBPRES(1);
-                    //*(__IO uint32_t *) CFGR_USBPRE_BB = RCC_USBCLKSource_PLLCLK_Div1;
+                    RCC.CFGR().USBPRES(1);  //  div1
                 }else{
-                    //dbg()<<"SYS not support xMHz"<<endl;
                     ///xy program must no reach here
                 }
                 RCC.APB1ENR().USBEN(1);
-                
-                //RCC->APB1ENR |= RCC_APB1Periph_USB;
-                
-                
-                /// general usb power on 
+
                 _SetCNTR(CNTR_FRES);
                 
                 _SetCNTR(0);
                 _SetISTR(0);
                 _SetCNTR(CNTR_RESETM | CNTR_SUSPM | CNTR_WKUPM);
-                
-                _SetISTR(0);
-                
+                _SetISTR(0);                
                 _SetCNTR(IMR_MSK);
-                
-                 _SetBTABLE(BTABLE_ADDRESS);
-                 
-                 _SetDADDR(0 | DADDR_EF);
+                _SetBTABLE(BTABLE_ADDRESS);
+                _SetDADDR(0 | DADDR_EF);
 			}
 
 			__INLINE void close()
 			{
-				///using namespace sfr::usbd;
-                //dbg()<<"close"<<endl;
 				disable_irq();
-				///USBD.ATTR(0x40);
-				///USBD.DRVSE0(0).DRVSE0(1);
                 
                 _SetCNTR(CNTR_FRES);
                 _SetISTR(0);
@@ -571,87 +434,22 @@ namespace usbd {
 
 			__INLINE void isr()
 			{
-                //dbg()<<"USB ISR"<<endl;
-				/// using namespace sfr::usbd;
-#if 0
-				do {
-					auto& usb = *static_cast<USB*>(this);
-					/// const auto intsts = USBD.INTSTS();
-                    const auto intsts = _GetISTR();
-					if (intsts.FLDET_STS) {
-						const auto fldet = USBD.FLDET();
-						USBD.INTSTS(0).FLDET_STS(1);
-						if (fldet.FLDET) {
-							if (usb.attach())
-								break;
-						} else {
-							usb.detach();
-							USBD.ATTR(0x40).RWAKEUP(1).DPPU_EN(1).PWRDN(1).BYTEM(0);				// Disable USB
-						}
-					} else if (intsts.BUS_STS) {
-						const auto attr = USBD.ATTR();
-						USBD.INTSTS(0).BUS_STS(1);
-						if (attr.USBRST) {
-							if (usb.reset())
-								break;
-						} else if (attr.SUSPEND) {
-							if (usb.suspend())
-								USBD.ATTR(0x40).USB_EN(1).DPPU_EN(1).PWRDN(1).BYTEM(0);				// Enable USB but disable PHY
-						} else if (attr.RESUME) {
-							if (usb.resume())
-								break;
-						}
-					} else if (intsts.USB_STS) {
-						if (intsts.SETUP) {
-							setup_pkt_t* pkt = reinterpret_cast<setup_pkt_t*>(const_cast<uint32_t*>(&USBD.SRAM32[126]));
-							__asm__ __volatile__("" : "+r" (pkt));
-							USBD.INTSTS(0).SETUP(1);
-							usb.setup(pkt->bmRequestType, pkt->bRequest, pkt->wValue, pkt->wIndex, pkt->wLength);
-						} else {
-							if (intsts.EPEVT) {
-								USBD.INTSTS(0).EPEVT(intsts.EPEVT);
-								if (intsts.EPEVT0)
-									usb.ep_event(0);
-								if (intsts.EPEVT1)
-									usb.ep_event(1);
-								if (intsts.EPEVT2)
-									usb.ep_event(2);
-								if (intsts.EPEVT3)
-									usb.ep_event(3);
-								if (intsts.EPEVT4)
-									usb.ep_event(4);
-								if (intsts.EPEVT5)
-									usb.ep_event(5);
-							}
-						}
-					}
-					return;
-				} while (false);
-#endif
                 do{
                     auto& usb = *static_cast<USB*>(this);
                     auto wIstr = _GetISTR();
                     if (wIstr & ISTR_RESET){
                         _SetISTR((uint16_t)CLR_RESET);
-                        //dbg()<<"ISTR_RESET:"<<endl;
                         usb.attach();
                         if (usb.reset()){
-                            /// For STM32, there is no status for device attach
-                            //dbg()<<"Attach reset:"<<endl;
                             usb.attach();
                             break;
                         }else{
-                            //dbg()<<"Reset fail:"<<endl;
                         }
                     }
                     if (wIstr & ISTR_WKUP){
                         _SetISTR((uint16_t)CLR_WKUP);
-                        //dbg()<<"ISTR_WKUP:"<<endl;
                         if (usb.resume()){
-                            /// For STM32, there is no status for device attach
-                            //dbg()<<"Attach resume:"<<endl;
                             usb.attach();
-                            //break;
                             
                             uint16_t wCNTR;
                             wCNTR = _GetCNTR();
@@ -661,11 +459,8 @@ namespace usbd {
                         }
                     }
                     if( wIstr & ISTR_SUSP){
-                        //dbg()<<"ISTR_SUSP:"<<endl;
                         usb.suspend();
                         {
-                            /// STM32 suspend code
-                            //dbg()<<"Suspend:"<<endl;
                             uint16_t wCNTR;
                             wCNTR = _GetCNTR();
                             wCNTR |= CNTR_FSUSP;
@@ -681,75 +476,44 @@ namespace usbd {
                         uint8_t	EPindex = (uint8_t)(wIstr & ISTR_EP_ID);
                         uint16_t wEPVal;
                         istr = wIstr;
-                        //dbg()<<"Has ep event"<<endl;
                         if (EPindex == 0) {
-                            //dbg()<<"ep0: event"<<endl;
                             wEPVal = _GetENDPOINT(ENDP0);
-                            //uint16_t SaveRState = wEPVal & EPRX_STAT;
-                            //uint16_t SaveTState = wEPVal & EPTX_STAT;
                             if ((wIstr & ISTR_DIR) == 0){ 
                                 _ClearEP_CTR_TX(ENDP0);
-                                //dbg()<<"ep0 in"<<endl;
                                 usb.ep_event(0);
                             } else {
                                 _ClearEP_CTR_RX(ENDP0);
                                 if ((wEPVal &EP_SETUP) != 0){
-                                    //setup_pkt_t PKT;
                                     setup_pkt_t* pkt = &PKT;
                                     uint16_t* buffer = (uint16_t*)(PMAAddr + (uint8_t *)(_GetEPRxAddr(ENDP0) * 2));
                                     pkt->pkt_data16[0] = *buffer++;buffer++;
                                     pkt->pkt_data16[1] = *buffer++;buffer++;
                                     pkt->pkt_data16[2] = *buffer++;buffer++;
                                     pkt->pkt_data16[3] = *buffer;
-                                    //dbg()<<"ep0 setup   state:" << HEX(usb.state)<<endl;
-                                    //dbg()<<pkt->bmRequestType<<","<<pkt->bRequest<<","<<pkt->wValue<<","<<pkt->wIndex<<","<<pkt->wLength<<endl;
                                     usb.setup(pkt->bmRequestType, pkt->bRequest, pkt->wValue, pkt->wIndex, pkt->wLength);
                                     _SetEPRxCount(ENDP0,64);
                                     _SetEPRxStatus(ENDP0,EP_RX_VALID);
                                 }else if ((wEPVal & EP_CTR_RX) != 0){
-                                    //dbg()<<"ep0 out"<<endl;
                                     usb.ep_event(0);
                                     _SetEPRxCount(ENDP0,64);
                                     _SetEPRxStatus(ENDP0,EP_RX_VALID);
                                 }
                             }
-                            //_SetEPRxTxStatus(ENDP0,SaveRState,SaveTState);
                         } else { 
                             wEPVal = _GetENDPOINT(EPindex);
-                            //dbg()<<"ep"<<wEPVal<<" : event"<<endl;
-                            if ((wEPVal & EP_CTR_RX) != 0)
-                              {
-                                /* clear int flag */
+                            if ((wEPVal & EP_CTR_RX) != 0) {
                                 _ClearEP_CTR_RX(EPindex);
-
-                                /* call OUT service function */
                                 usb.ep_event(EPindex);
-
-                              } /* if((wEPVal & EP_CTR_RX) */
-
-                              if ((wEPVal & EP_CTR_TX) != 0)
-                              {
-                                /* clear int flag */
+                            }
+                            if ((wEPVal & EP_CTR_TX) != 0) {
                                 _ClearEP_CTR_TX(EPindex);
-
-                                /* call IN service function */
                                 usb.ep_event(EPindex);
-                              } /* if((wEPVal & EP_CTR_TX) != 0) */
+                            }
                         }
                     }
                     return;
                 }while(false);
-                //dbg()<<"Reset the device after while loop"<<endl;
-				/// USBD.FADDR(0);		                        // Init the USB device address to 0x0
-                
-				/// USBD.BUFSEG(504);	                        // Buffer for setup packet
-                
                 _SetBTABLE(BTABLE_ADDRESS);
-
-				//EP0::config(0, 0, true);
-                
-                //_SetEPType(ENDP0, EP_CONTROL);
-                //_SetEPTxStatus(ENDP0, EP_TX_STALL);
                 
                 EP0::config(CONTROL, 0, true);
                 EP0::config(CONTROL, 0 , false);
@@ -766,46 +530,24 @@ namespace usbd {
 			{
 				/// using namespace sfr::usbd;
 				auto& usb = *static_cast<USB*>(this);
-                //dbg()<<__func__<<endl;
-				/// setup_pkt_t* pkt = reinterpret_cast<setup_pkt_t*>(const_cast<uint32_t*>(&USBD.SRAM32[126]));
                 setup_pkt_t* pkt = &PKT;
 				__asm__ __volatile__("" : "+r" (pkt));
                 
-                //uint16_t* buffer = (uint16_t*)(PMAAddr + (uint8_t *)(_GetEPRxAddr(ENDP0) * 2));
-                //pkt->pkt_data16[0] = *buffer++;buffer++;
-                //pkt->pkt_data16[1] = *buffer++;buffer++;
-                //pkt->pkt_data16[2] = *buffer++;buffer++;
-                //pkt->pkt_data16[3] = *buffer++;
-				/// if (this->reg->CFG().STATE == 2) {
-                
-                /// 这个地方会有问题
-                /// 新塘的状态在各自的ep寄存器中，而STM32的ep寄存器同时支持in和out
-                /// 需要用别的方式来检测这里是in还是out
-                /// STM32官方库是通过 _GetISTR()来得到ep编号和方向的。然后再调用相应的函数来处理
-                /// 参见void CTR_LP(void)函数的实现。在usb_int.c文件中
-                if((/*_GetISTR()*/ istr & ISTR_DIR) == 0) {
-                    //dbg()<<"transact_in"<<endl;
-                    //dbg()<<pkt->bmRequestType<<","<<pkt->bRequest<<","<<pkt->wValue<<","<<pkt->wIndex<<","<<pkt->wLength<<endl;
+                if((istr & ISTR_DIR) == 0) {
+                    // Todo: we need delay a while.
                     volatile int i = 200; while(i--);
 					usb.transact_in(pkt->bmRequestType, pkt->bRequest, pkt->wValue, pkt->wIndex, pkt->wLength);
 				} else {
-                    //dbg()<<"transact_out"<<endl;
-                    //dbg()<<pkt->bmRequestType<<","<<pkt->bRequest<<","<<pkt->wValue<<","<<pkt->wIndex<<","<<pkt->wLength<<endl;
 					usb.transact_out(pkt->bmRequestType, pkt->bRequest, pkt->wValue, pkt->wIndex, pkt->wLength);
 				}
 			}
 
 			__INLINE bool set_address(uint_fast8_t address)
 			{
-				///xy using namespace sfr::usbd;
-				///xy USBD.FADDR(address);
-                //dbg()<<"Set address:"<<address<<endl;
                 _SetDADDR(address | DADDR_EF);
-                //USB_FS.DADDR(address|DADDR_EF);
-                
 				return true;
 			}
-            // Remember last pkt
+
             setup_pkt_t PKT;
             uint16_t istr;
 		};
